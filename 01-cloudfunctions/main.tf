@@ -61,12 +61,20 @@ resource "google_cloudfunctions2_function" "functions" {
   }
 }
 
-# IAM Permissions for Each Function
+# Anonymous access for Each Function
 resource "google_cloud_run_service_iam_member" "functions_iam" {
   for_each = var.functions
-
   location = google_cloudfunctions2_function.functions[each.key].location
   service  = google_cloudfunctions2_function.functions[each.key].name
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
+
+# IAM Member: Firestore Access
+# Grants the Firestore user role to the specified service account for the project.
+resource "google_project_iam_member" "flask_firestore_access" {
+  project = local.credentials.project_id                      # Specifies the project ID from local credentials.
+  role    = "roles/datastore.user"                            # Role assigned to the member, allowing Firestore access.
+  member  = "serviceAccount:${local.service_account_email}"   # Service account email receiving the role.
+}
+
