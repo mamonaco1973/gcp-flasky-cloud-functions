@@ -19,6 +19,9 @@ gcloud services enable compute.googleapis.com
 gcloud services enable firestore.googleapis.com
 gcloud services enable cloudresourcemanager.googleapis.com
 gcloud services enable storage.googleapis.com
+gcloud services enable apigateway.googleapis.com
+gcloud services enable servicemanagement.googleapis.com
+gcloud services enable servicecontrol.googleapis.com
 
 # Create Firestore database
 gcloud firestore databases create --location=us-central1 --type=firestore-native > $null 2> $null
