@@ -1,7 +1,6 @@
 import functions_framework
 import os  # Import OS library to interact with environment variables
 import logging  # Import logging library for capturing logs
-import socket  # Import socket library to retrieve hostname and IP information
 from flask import Response, Flask, request, jsonify
 from google.cloud import firestore
 
@@ -10,7 +9,7 @@ def gtg(request):
     try:
         request_args = request.args
         details = request_args.get("details")
-        hostname = socket.gethostname()  # Retrieve the hostname of the current instance
+        hostname = os.popen('hostname -I').read().strip()
 
         if details:
             # If 'details' parameter exists, return instance connectivity and hostname details
@@ -25,6 +24,7 @@ def gtg(request):
 
 
 def candidates(request):
+
     try:
         if request.method != 'GET':
             return Response(jsonify({'error': 'Method not allowed'}).data, status=405, mimetype="application/json")
@@ -37,7 +37,6 @@ def candidates(request):
         for doc in docs:
             names_array.append(doc.to_dict())
 
-        #return Response(jsonify({'message': 'candidates GET request received'}).data, status=200, mimetype="application/json")
         return Response(jsonify(names_array).data, status=200, mimetype="application/json")
     except Exception as e:
         logging.exception("An error occurred in the candidates function")
@@ -52,12 +51,26 @@ def candidate(request):
             return Response(jsonify({'error': 'name is invalid'}).data, status=400, mimetype="application/json")
 
         if request.method == 'GET':
-            return Response(jsonify({'message': f'candidate GET request received for {name}'}).data, status=200, mimetype="application/json")
+            db = firestore.Client()
+            collection_name = "candidates"
+            doc_ref = db.collection(collection_name).document(name)
+            doc = doc_ref.get()
 
+            if doc.exists:
+                return Response(jsonify(doc.to_dict()).data, status=200, mimetype="application/json")
+            else:
+                return Response(jsonify({'error': 'name not found'}).data, status=404, mimetype="application/json")
+            
         if request.method == 'POST':
-            return Response(jsonify({'message': f'candidate POST request received for {name}'}).data, status=200, mimetype="application/json")
-        
+            db = firestore.Client()
+            collection_name = "candidates"
+            doc_id = name
+            data = { "CandidateName" : name }
+            doc_ref = db.collection(collection_name).document(doc_id)
+            doc_ref.set(data)
+            return Response(jsonify(data).data, status=200, mimetype="application/json")
+          
         return Response(jsonify({'error': 'Method not allowed'}).data, status=405, mimetype="application/json")
     except Exception as e:
-        logging.exception("An error occurred in the candidate function")
+        logging.exception("An error occurred in the candidate function")    
         return Response(jsonify({"error": str(e)}).data, status=500, mimetype="application/json")
