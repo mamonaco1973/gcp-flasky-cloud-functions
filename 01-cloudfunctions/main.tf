@@ -25,108 +25,48 @@ resource "google_storage_bucket" "flasky_bucket" {
 
 # Upload the zip file to the bucket
 
-resource "google_storage_bucket_object" "gtg_zip" {
+resource "google_storage_bucket_object" "function_zip" {
   bucket = google_storage_bucket.flasky_bucket.name
   name   = "function-source-${filesha256("./functions.zip")}.zip"
   source = "./functions.zip" 
 }
 
-# Deploy the HTTP-triggered v2 Cloud Function
-resource "google_cloudfunctions2_function" "gtg_function" {
-  name     = "gtg"
-  location = "us-central1" # Replace with your desired region
+# Deploy Cloud Functions Using for_each loop
+
+resource "google_cloudfunctions2_function" "functions" {
+
+  for_each = var.functions
+
+  name     = each.key
+  location = "us-central1"
 
   build_config {
-    runtime     = "python311" # Specify the Python 3.11 runtime
-    entry_point = "gtg"       # Entry point in your Python code
+    runtime     = "python311"
+    entry_point = each.value.entry_point
 
     source {
       storage_source {
-        bucket = google_storage_bucket_object.gtg_zip.bucket
-        object = google_storage_bucket_object.gtg_zip.name
+        bucket = google_storage_bucket_object.function_zip.bucket
+        object = google_storage_bucket_object.function_zip.name
       }
     }
   }
 
   service_config {
-    ingress_settings    = "ALLOW_ALL" # Allow all HTTP traffic; restrict as needed
-    available_memory    = "256M"
-    min_instance_count  = 0 
-    max_instance_count  = 2
-    timeout_seconds     = 60
+    ingress_settings    = "ALLOW_ALL"
+    available_memory    = each.value.memory
+    min_instance_count  = each.value.min_instances
+    max_instance_count  = each.value.max_instances
+    timeout_seconds     = each.value.timeout
   }
 }
 
-resource "google_cloud_run_service_iam_member" "gtg_member" {
-  location = google_cloudfunctions2_function.gtg_function.location
-  service  = google_cloudfunctions2_function.gtg_function.name
+# IAM Permissions for Each Function
+resource "google_cloud_run_service_iam_member" "functions_iam" {
+  for_each = var.functions
+
+  location = google_cloudfunctions2_function.functions[each.key].location
+  service  = google_cloudfunctions2_function.functions[each.key].name
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
-
-# Deploy the HTTP-triggered v2 Cloud Function
-resource "google_cloudfunctions2_function" "candidates_function" {
-  name     = "candidates"
-  location = "us-central1" # Replace with your desired region
-
-  build_config {
-    runtime     = "python311"        # Specify the Python 3.11 runtime
-    entry_point = "candidates"       # Entry point in your Python code
-
-    source {
-      storage_source {
-        bucket = google_storage_bucket_object.gtg_zip.bucket
-        object = google_storage_bucket_object.gtg_zip.name
-      }
-    }
-  }
-
-  service_config {
-    ingress_settings    = "ALLOW_ALL" # Allow all HTTP traffic; restrict as needed
-    available_memory    = "256M"
-    min_instance_count  = 0 
-    max_instance_count  = 2
-    timeout_seconds     = 60
-  }
-}
-
-resource "google_cloud_run_service_iam_member" "candidates_member" {
-  location = google_cloudfunctions2_function.candidates_function.location
-  service  = google_cloudfunctions2_function.candidates_function.name
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
-
-# Deploy the HTTP-triggered v2 Cloud Function
-resource "google_cloudfunctions2_function" "candidate_function" {
-  name     = "candidate"
-  location = "us-central1" # Replace with your desired region
-
-  build_config {
-    runtime     = "python311"        # Specify the Python 3.11 runtime
-    entry_point = "candidate"        # Entry point in your Python code
-
-    source {
-      storage_source {
-        bucket = google_storage_bucket_object.gtg_zip.bucket
-        object = google_storage_bucket_object.gtg_zip.name
-      }
-    }
-  }
-
-  service_config {
-    ingress_settings    = "ALLOW_ALL" # Allow all HTTP traffic; restrict as needed
-    available_memory    = "256M"
-    min_instance_count  = 0 
-    max_instance_count  = 2
-    timeout_seconds     = 60
-  }
-}
-
-resource "google_cloud_run_service_iam_member" "candidate_member" {
-  location = google_cloudfunctions2_function.candidate_function.location
-  service  = google_cloudfunctions2_function.candidate_function.name
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
-
