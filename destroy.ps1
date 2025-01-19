@@ -1,4 +1,4 @@
-cd .\01-cloudfunctions
+Set-Location "01-cloudfunctions"
 terraform init
 terraform destroy -auto-approve
-cd ..
+Set-Location ".."

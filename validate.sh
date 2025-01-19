@@ -1,59 +1,31 @@
 #!/bin/bash
 
-# Set the resource group name
-RESOURCE_GROUP_NAME="flasky-resource-group" # Replace with your resource group name
-
-# Retrieve the function app name dynamically
-FUNCTION_APP_NAME=$(az functionapp list \
-    --resource-group "$RESOURCE_GROUP_NAME" \
-    --query "[?starts_with(name, 'flasky-')].name | [0]" \
-    --output tsv)
-
-# Check if FUNCTION_APP_NAME is empty
-if [[ -z "$FUNCTION_APP_NAME" ]]; then
-    echo "ERROR: No function app found in the resource group '$RESOURCE_GROUP_NAME' with a name starting with 'flasky-'. Exiting script."
+# Check if the file "./credentials.json" exists
+if [ ! -f "./credentials.json" ]; then
+    echo "ERROR: The file './credentials.json' does not exist."
     exit 1
 fi
 
-# Retrieve the service URL
-SERVICE_URL=$(az functionapp show \
-    --name "$FUNCTION_APP_NAME" \
-    --resource-group "$RESOURCE_GROUP_NAME" \
-    --query "defaultHostName" \
-    --output tsv)
+# Run the gcloud authentication command
+gcloud auth activate-service-account --key-file="./credentials.json"
 
-# Check if SERVICE_URL is empty
-if [[ -z "$SERVICE_URL" ]]; then
-    echo "ERROR: Unable to retrieve the service URL for the function app '$FUNCTION_APP_NAME'. Exiting script."
-    exit 1
-fi
+# Execute the gcloud command and store the output in a variable
+IdentityToken=$(gcloud auth print-identity-token)
 
-functions=("candidates" "candidate_get" "candidate_post" "gtg")
+# Output the token to verify
+echo "NOTE: Bearer token if not deployed anonymous"
+echo ""
+echo "bearer $IdentityToken"
+echo ""
 
-# Loop through each function and retrieve the keys
-for function in "${functions[@]}"; do
-    # Get the function keys as JSON
-    keys=$(az functionapp function keys list \
-        --resource-group "$RESOURCE_GROUP_NAME" \
-        --name "$FUNCTION_APP_NAME" \
-        --function-name "$function" \
-        --output json)
+# Extract the project_id using jq
+project_id=$(jq -r '.project_id' "./credentials.json")
 
-    # Extract the default key using jq
-    defaultKey=$(echo "$keys" | jq -r '.default')
+# Construct the URL
+URL="https://us-central1-${project_id}.cloudfunctions.net"
 
-    # Print the output in the desired format
-    echo "NOTE: Function key for $function is {$defaultKey}"
-done
+# Output the health check endpoint
+echo "NOTE: Health check endpoint is $URL/gtg?details=true"
 
-
-# Add "https://" prefix to construct the full service URL
-SERVICE_URL="https://$SERVICE_URL"
-
-# Output notes and test the API Gateway Solution
-echo "NOTE: Testing the API Gateway Solution."
-echo "NOTE: URL for API Solution is $SERVICE_URL/gtg?details=true"
-
-# Execute the test script with the Service URL
-./01-functionapp/test_candidates.py "$SERVICE_URL"
-
+# Run the test_candidates script
+./01-cloudfunctions/test_candidates.py "$URL"
