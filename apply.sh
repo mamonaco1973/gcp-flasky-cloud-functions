@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Run the check_env.ps1 script and capture the exit code
-./check_env.ps1
+./check_env.sh
 returnCode=$?
 
 # Check if the return code indicates failure
@@ -38,4 +38,4 @@ cd ..
 echo "NOTE: Validating the solution."
 
 # Run the validate.ps1 script
-./validate.ps1
+./validate.sh
