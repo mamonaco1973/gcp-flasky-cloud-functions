@@ -24,3 +24,9 @@ variable "functions" {
     }
   }
 }
+
+variable "anonymous" {
+  description = "Enable anonymous access to Cloud Functions (allUsers can invoke the functions)"
+  type        = bool
+  default     = true
+}

@@ -63,12 +63,13 @@ resource "google_cloudfunctions2_function" "functions" {
 
 # Anonymous access for Each Function
 resource "google_cloud_run_service_iam_member" "functions_iam" {
-  for_each = var.functions
+  for_each = var.anonymous ? var.functions : {}
   location = google_cloudfunctions2_function.functions[each.key].location
   service  = google_cloudfunctions2_function.functions[each.key].name
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
+
 
 # IAM Member: Firestore Access
 # Grants the Firestore user role to the specified service account for the project.

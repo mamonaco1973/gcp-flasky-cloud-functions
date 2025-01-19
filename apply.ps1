@@ -26,12 +26,5 @@ Set-Location ".."
 
 Write-Host "NOTE: Validating the solution."   -ForegroundColor Green
 
-# Extract the project_id using ConvertFrom-Json
-$jsonContent = Get-Content "./credentials.json" -Raw | ConvertFrom-Json
-$project_id = $jsonContent.project_id
-
-$URL="https://us-central1-${project_id}.cloudfunctions.net/"
-
-Write-Output "NOTE: Health check endpoint is http://$FLASK_LB_IP/gtg?details=true"
-.\01-cloudfunctions\test_candidates.ps1 $URL
+./validate.ps1
 
