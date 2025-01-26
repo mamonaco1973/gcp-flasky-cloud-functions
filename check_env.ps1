@@ -1,7 +1,7 @@
 Write-Host "NOTE: Validating that required commands are found in the PATH." -ForegroundColor Green
 
 # List of required commands
-$commands = @("gcloud", "packer", "terraform")
+$commands = @("gcloud", "terraform")
 
 # Flag to track if all commands are found
 $allFound = $true
