@@ -1,186 +1,107 @@
-# Deploying Serverless HTTP Endpoints with GCP Cloud Functions
+# Serverless Flask-Style API on GCP Cloud Functions
 
-This video is a follow-up to the [GCP Managed Instance Groups](https://youtu.be/AAOZOhREc5o) tutorial, where we deployed a Python microservice using the Flask framework and managed it with GCP Instance Groups.
+The candidate microservice from the
+[GCP Managed Instance Groups](https://youtu.be/AAOZOhREc5o) project, rebuilt
+without servers: three second-generation **Cloud Functions** serve the
+endpoints, built from source in a **Cloud Storage** bucket, and store
+candidates in **Firestore**. One variable switches the functions between
+public and authenticated.
 
-In this video, we will deploy a set of Python-based serverless functions using **GCP Cloud Functions**. The goal is to replicate the functionality of the API from the [GCP Managed Instance Groups project](https://github.com/mamonaco1973/gcp-flask-mig/blob/main/README.md) using Cloud Functions.
+![Cloud Functions in the console](gcp-console.png)
 
-By the end of this video, you’ll learn how to deploy Python-based HTTP endpoints as Cloud Functions using **Terraform**.
+| Piece | Where | Role |
+|---|---|---|
+| **Cloud Functions** | `us-central1`, 2nd gen | `gtg`, `candidates` and `candidate`, Python 3.11, 256 MB, up to 2 instances each; ingress `ALLOW_ALL` |
+| **Source bucket** | `us-central1` | `flasky-bucket-<hex>`; holds `functions.zip`, named by its SHA-256 so a code change rebuilds the functions |
+| **run.invoker binding** | each function | `allUsers`, only when `anonymous = true` |
+| **Firestore** | `us-central1` | native mode database, created by `api_setup.sh` |
 
-### Key Tasks Covered
+## Architecture
 
-1. **Deploy Python Code**: Build microservices using GCP Cloud Functions.
-2. **Utilize Firebase**: Use Firebase as a document database for microservice data storage.
-3. **Secure HTTP Endpoints**: Protect endpoints using a signed JWT (JSON Web Token)
-4. **Clean Up Resources**: Safely destroy all infrastructure created during deployment.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="architecture-dark.svg">
+  <img alt="apply.sh zips the Python source and Terraform uploads it to a Cloud Storage bucket, from which three second-generation Cloud Functions are built: gtg, candidates and candidate, each Python 3.11 with 256 MB and up to two instances. With anonymous access on, run.invoker is granted to allUsers and anyone can call them over HTTPS; with it off, callers send a gcloud identity token as a bearer token. The functions read and write Firestore." src="architecture-light.svg">
+</picture>
 
-## Serverless Computing with Google Cloud Functions
+Regenerate with `python3 make_diagram.py`.
 
-**Serverless computing** is a cloud-computing execution model where **Google Cloud** dynamically manages the infrastructure, including server provisioning, scaling, and maintenance. This approach allows developers to focus entirely on writing and deploying code without the need to manage or maintain underlying servers. A key use case for serverless computing is building and managing **HTTP endpoints**, making it a powerful solution for web applications, APIs, and microservices.
+**`01-cloudfunctions/`** is the whole stack: `main.tf` (bucket, source
+upload, the three functions, the invoker bindings, and `roles/datastore.user`
+for the Terraform service account), `variables.tf` (the function map and
+`anonymous`), the code in `code/`, and the `test_candidates` smoke tests.
 
-### Key Characteristics of Google Cloud Functions
+## API
 
-- **No Server Management**: Developers don't need to manage or provision servers; Google Cloud handles the underlying infrastructure, allowing more focus on application logic.
-- **Automatic Scaling**: Google Cloud Functions automatically scale up or down based on demand, ensuring consistent performance regardless of traffic volume.
-- **Pay-As-You-Go**: Costs are based on actual usage (e.g., number of requests, function execution time, and memory allocation), providing cost-efficiency for workloads with varying traffic patterns.
+Each function has its own URL, `https://us-central1-<project>.cloudfunctions.net/<function>`.
 
-### Google Cloud Functions for Serverless HTTP-Based Solutions
-
-Serverless computing in Google Cloud is powered by **Google Cloud Functions**, a Functions-as-a-Service (FaaS) platform that simplifies the development and deployment of serverless applications.
-
-- **Google Cloud Functions**: Executes code in response to HTTP(S) requests or other event triggers, without the need to provision or manage servers. Cloud Functions automatically scale to handle varying levels of traffic and are billed based on the execution time, memory usage, and number of invocations.
-
-- **HTTP Triggers**: Google Cloud Functions natively support HTTP(S) triggers, making them an ideal choice for building RESTful APIs, webhooks, and other HTTP-based services. These triggers allow functions to securely and efficiently handle incoming HTTP requests.
-
-
-Google Cloud Functions enable developers to build scalable, cost-effective, and fully serverless web applications, APIs, and microservices, empowering teams to deliver solutions faster while minimizing infrastructure overhead.
-
-
-![GCP diagram](gcp-flasky-cloud-functions.png)
+| Method | Path | Function | Returns |
+|---|---|---|---|
+| GET | `/gtg` | `gtg` | 200; with `?details=true`, connection details |
+| GET | `/candidate/<name>` | `candidate` | the candidate, or 404 |
+| POST | `/candidate/<name>` | `candidate` | `{"CandidateName": <name>}`, or 500 |
+| GET | `/candidates` | `candidates` | every candidate, or 404 |
 
 ## Prerequisites
 
 * [A Google Cloud Account](https://console.cloud.google.com/)
-* [Install gcloud CLI](https://cloud.google.com/sdk/docs/install) 
-* [Install Latest Terraform](https://developer.hashicorp.com/terraform/install)
+* [Install gcloud CLI](https://cloud.google.com/sdk/docs/install)
+* [Install Terraform](https://developer.hashicorp.com/terraform/install)
+* `zip`
+* [Postman](https://www.postman.com/downloads/) for testing
 
-If this is your first time watching our content, we recommend starting with this video: [GCP + Terraform: Easy Setup](https://youtu.be/3spJpYX4f7I). It provides a step-by-step guide to properly configure Terraform, Packer, and the gcloud CLI.
+Put a service account key in the repository root as `credentials.json`. If
+this is your first time watching our content, we recommend starting with
+this video: [GCP + Terraform: Easy Setup](https://youtu.be/3spJpYX4f7I).
 
-## Download this Repository
+## Deploy
 
 ```bash
 git clone https://github.com/mamonaco1973/gcp-flasky-cloud-functions.git
 cd gcp-flasky-cloud-functions
+./api_setup.sh   # first time: enables the APIs and creates the Firestore database
+./apply.sh       # or .\apply.ps1: zips the code, then applies 01-cloudfunctions
 ```
 
-## Build the Code
+`apply.sh` ends by running `validate.sh`, which prints an identity token
+(only needed when anonymous access is off) and runs the smoke test:
 
-Run [check_env](check_env.sh) then run [apply](apply.sh).
-
-```bash
-~/gcp-flasky-cloud-functions$ ./apply.sh
-NOTE: Validating that required commands are found in the PATH.
-NOTE: gcloud is found in the current PATH.
-NOTE: packer is found in the current PATH.
-NOTE: terraform is found in the current PATH.
-NOTE: All required commands are available.
-NOTE: Validating credentials.json and test the gcloud command
-Activated service account credentials for: [terraform-build@debug-project-446221.iam.gserviceaccount.com]
-NOTE: Zipping cloud function source into functions.zip.
-  adding: requirements.txt (stored 0%)
-  adding: main.py (deflated 74%)
-NOTE: Building the cloud functions with Terraform.
-Initializing the backend...
-Initializing provider plugins...
-- Finding latest version of hashicorp/google...
-- Finding latest version of hashicorp/random...
-- Installing hashicorp/google v6.17.0...
-- Installed hashicorp/google v6.17.0 (signed by HashiCorp)
-- Installing hashicorp/random v3.6.3...
-- Installed hashicorp/random v3.6.3 (signed by HashiCorp)
-Terraform has created a lock file .terraform.lock.hcl to record the provider
-selections it made above. Include this file in your version control repository
-so that Terraform can guarantee to make the same selections by default when
-you run "terraform init" in the future.
-
-Terraform has been successfully initialized!
-[...]
 ```
-
-### Build Process Overview
-
-The build process consists of two distinct phases:
-
-#### 1. Packaging the Python Code
-- The Python code is compressed into a ZIP file during this phase.
-- A checksum of the ZIP file is generated to detect code changes in subsequent builds.
-
-#### 2. Deploying the Infrastructure
-- Terraform code is executed to deploy the Cloud Functions and the storage bucket for the code.
-- A role is assigned to grant the Cloud Functions access to Firebase.
-
-#### Final Validation
-- Once the build is complete, the [`validate.sh`](validate.sh) script is run to verify the solution and ensure all components are functioning as expected.
-
-## Tour of Build Output in the GCP Console
-
-Most of the build can be accessed on the **Cloud Run** page of the GCP Console.
-
-![GCP Console](gcp-console.png)
-
-## *Flasky* Endpoint Summary
-
-- [Cloud Function Source Code](./01-cloudfunctions/code/main.py)
-
-### `/gtg` (GET)
-- **Purpose**: Health check.
-- **Response**: 
-  - `{"connected": "true", "instance-id": <instance_id>}` (if `details` query parameter is provided).
-  - 200 OK with no body otherwise.
-
-### `/candidate/<name>` (GET)
-- **Purpose**: Retrieve a candidate by name.
-- **Response**: 
-  - Candidate details (JSON) with status `200`.
-  - `"Not Found"` with status `404` if no candidate is found.
-
-### `/candidate/<name>` (POST)
-- **Purpose**: Add or update a candidate by name.
-- **Response**: 
-  - `{"CandidateName": <name>}` with status `200`.
-  - `"Unable to update"` with status `500` on failure.
-
-### `/candidates` (GET)
-- **Purpose**: Retrieve all candidates.
-- **Response**: 
-  - List of candidates (JSON) with status `200`.
-  - `"Not Found"` with status `404` if no candidates exist.
-
-## Securing HTTP Endpoints with Google Cloud Authentication Headers
-
-In the initial deployment of this project, the HTTP endpoints were deployed without any access controls, allowing anyone on the public internet to connect to them. In this section, we will secure the endpoints using Google Cloud authentication headers and test the setup with Postman.
-
-Google Cloud authentication headers provide an additional layer of security by requiring a signed JWT (JSON Web Token) or an identity token to be included in the request header for access. This ensures that only authorized clients can invoke the endpoints.
-
-### Steps to Secure and Test the Endpoints
-
-#### 1. Modify the `anonymous` Variable
-
-Update the `anonymous` variable in the [01-cloudfunctions\variables.tf](01-cloudfunctions\variables.tf) file to **true**.
-
-```tf
-# Boolean Variable for Anonymous Access
-# Determines whether to enable anonymous access to the deployed Cloud Functions (public invocation).
-variable "anonymous" {
-  description = "Enable anonymous access to Cloud Functions (allUsers can invoke the functions)" # Description of the variable.
-  type        = bool  # Data type of the variable (boolean).
-  default     = false  # Default value set to 'true' to allow public invocation.
-}
-```
-#### 2. Apply the Terraform Configuration
-
-Run the `apply.sh` script to re-deploy the infrastructure with the updated authorization setting.
-
-#### 3. Validate Authentication Enforcement
-
-Run the `validate.sh` script. You should see Forbidden errors for all API requests because function key is now required. **NOTE** it may take several minutes for the authorization to be enabled after the apply script.
-
-```bash
-~/gcp-flasky-cloud-functions$ ./validate.sh
-Activated service account credentials for: [terraform-build@debug-project-446221.iam.gserviceaccount.com]
 NOTE: Bearer token if not deployed anonymous
-
-bearer <LONG_TOKEN>
-
-NOTE: Health check endpoint is https://us-central1-debug-project-446221.cloudfunctions.net/gtg?details=true
-✗ good to go failed: Forbidden
-✗ insert failed: Forbidden
-✗ verification failed: Forbidden
-✗ candidate list failed: Forbidden
-
+bearer <token>
+NOTE: Health check endpoint is https://us-central1-my-project.cloudfunctions.net/gtg?details=true
+✓ good to go passed
+✓ insert passed
+✓ verification passed
+✓ candidate list passed
 ```
-#### 4. Test APIs with Postman using the key output from `validate.sh`
 
-Use Postman to test the endpoints by setting the `Authorization` header with a value of "bearer <TOKEN>". This value is displayed in the `validate.sh` output and is valid for 1 hour after running the validate script.
+## Try it
 
-![postman](postman.png)
+1. Call the endpoints with Postman or `curl`, for example
+   `curl https://us-central1-<project>.cloudfunctions.net/candidates`.
 
+2. Require authentication. In `01-cloudfunctions/variables.tf`, set
+   `anonymous` to `false` (the default is `true`) and run `./apply.sh`
+   again; this removes the `allUsers` invoker bindings. After a few minutes,
+   `validate.sh` fails every check with `Forbidden`. Add the token it prints
+   as an `Authorization: Bearer <token>` header in Postman and the requests
+   succeed again.
+
+   ![Postman with a bearer token](postman.png)
+
+## Teardown
+
+```bash
+./destroy.sh     # or .\destroy.ps1
+```
+
+## Notes
+
+- **Lab only.** With the default `anonymous = true`, anyone can call the
+  functions.
+- The functions don't set a service account, so they run as the project's
+  default compute service account; the `roles/datastore.user` binding is on
+  the Terraform service account.
+- The root `main.tf` (a `setup-vm` with SSH and HTTP firewall rules) and
+  `apache.png` are leftovers from the gcp-setup project; `apply.sh` doesn't
+  use them.
